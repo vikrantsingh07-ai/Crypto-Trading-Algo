@@ -1,9 +1,0 @@
-numpy>=1.26
-pandas>=2.1
-
-[dev]
-pytest>=8
-requests>=2.31
-
-[live-data]
-requests>=2.31

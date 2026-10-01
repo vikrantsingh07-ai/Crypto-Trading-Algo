@@ -8,3 +8,4 @@ runtime/
 data/*.csv
 data/*.parquet
 .venv/
+*.egg-info/
