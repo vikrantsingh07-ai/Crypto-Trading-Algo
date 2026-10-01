@@ -101,9 +101,15 @@ tests/         unit / strategy / backtest / data / risk / execution / failure / 
 
 ## Tests
 
-`pytest` runs ~150 tests across: unit & accounting (hand-computed fills), strategy contracts, **look-ahead
+`pytest` runs 129 tests across: unit & accounting (hand-computed fills), strategy contracts, **look-ahead
 (causality) tests for every indicator and strategy**, backtest/metrics (formulas verified independently),
 data integrity, risk management (every limit and reset), paper execution, **failure/reconnection**,
 **duplicate-order prevention**, crash-restart recovery, **paper-vs-backtest equivalence**, dashboard, a
 source-scan proving no real-trading code exists, and an accelerated long-running stability test with
 random faults and restarts. See [`docs/RESULTS.md`](docs/RESULTS.md) for the recorded run.
+
+## TradingView
+
+`pine/trend_breakout.pine` is a Pine v5 port of `trend_breakout` (strategy + signal arrows + alerts). Paste it in the
+Pine Editor on a 4h BTCUSDT/ETHUSDT chart. It is a visualisation/research aid: fills differ from the Python engine, and
+the strategy is not validated on real data. The Python system does not accept TradingView webhooks.

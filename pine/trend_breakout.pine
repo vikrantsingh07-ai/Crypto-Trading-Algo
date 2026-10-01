@@ -1,0 +1,71 @@
+//@version=5
+// PAPER / RESEARCH ONLY - port of cryptoalgo `trend_breakout`. Not validated on real data. Not financial advice.
+// Donchian breakout in the direction of EMA200, filtered by ADX and volume; ATR stop + chandelier trail.
+// Use on 4h BTCUSDT / ETHUSDT. Strategy Tester numbers will differ from the Python backtester (different fill model).
+strategy("Trend Breakout (paper research)", overlay=true, initial_capital=100000,
+         commission_type=strategy.commission.percent, commission_value=0.10,   // taker fee per side
+         slippage=5, default_qty_type=strategy.percent_of_equity, default_qty_value=100,
+         calc_on_every_tick=false, process_orders_on_close=false)             // signal on close, fill next open
+
+donchN   = input.int(48, "Donchian entry N", minval=5)
+exitN    = input.int(24, "Donchian exit N", minval=5)
+emaLen   = input.int(200, "EMA trend", minval=20)
+adxMin   = input.float(20.0, "ADX minimum")
+volMin   = input.float(1.0, "Volume ratio minimum")
+stopAtr  = input.float(2.5, "Initial stop (xATR)")
+trailAtr = input.float(3.0, "Trail (xATR)")
+riskPct  = input.float(0.5, "Risk per trade % of equity")
+allowShort = input.bool(true, "Allow shorts")
+
+atr = ta.atr(14)
+[diP, diM, adx] = ta.dmi(14, 14)
+ema = ta.ema(close, emaLen)
+volRatio = volume / ta.sma(volume, 20)
+hiPrev = ta.highest(high, donchN)[1]          // prior N bars only (no look-ahead)
+loPrev = ta.lowest(low, donchN)[1]
+xHi = ta.highest(high, exitN)[1]
+xLo = ta.lowest(low, exitN)[1]
+
+ok = adx > adxMin and volRatio > volMin
+longSig  = close > hiPrev and close > ema and ok
+shortSig = allowShort and close < loPrev and close < ema and ok
+
+var float stopLvl = na
+var float best = na
+var float sdist = na
+
+// size so that (stop distance) x qty = riskPct of equity
+qtyFor(d) => math.max(strategy.equity * riskPct / 100 / d, 0.0)
+
+if strategy.position_size == 0
+    if longSig
+        sdist := stopAtr * atr
+        strategy.entry("L", strategy.long, qty=qtyFor(sdist))
+    if shortSig
+        sdist := stopAtr * atr
+        strategy.entry("S", strategy.short, qty=qtyFor(sdist))
+
+if strategy.position_size > 0
+    best := na(best) or strategy.position_size[1] <= 0 ? high : math.max(best, high)
+    entry = strategy.position_avg_price
+    stopLvl := math.max(entry - sdist, best - trailAtr * atr)
+    strategy.exit("xL", "L", stop=stopLvl)
+    if close < xLo
+        strategy.close("L", comment="donchian exit")
+else if strategy.position_size < 0
+    best := na(best) or strategy.position_size[1] >= 0 ? low : math.min(best, low)
+    entry = strategy.position_avg_price
+    stopLvl := math.min(entry + sdist, best + trailAtr * atr)
+    strategy.exit("xS", "S", stop=stopLvl)
+    if close > xHi
+        strategy.close("S", comment="donchian exit")
+else
+    best := na
+
+plot(ema, "EMA trend", color.new(color.orange, 0))
+plot(hiPrev, "Donchian high", color.new(color.green, 60))
+plot(loPrev, "Donchian low", color.new(color.red, 60))
+plotshape(longSig and strategy.position_size == 0, "Long signal", shape.triangleup, location.belowbar, color.green, size=size.small)
+plotshape(shortSig and strategy.position_size == 0, "Short signal", shape.triangledown, location.abovebar, color.red, size=size.small)
+alertcondition(longSig, "Long breakout", "Trend Breakout LONG signal on {{ticker}} {{interval}}")
+alertcondition(shortSig, "Short breakout", "Trend Breakout SHORT signal on {{ticker}} {{interval}}")
