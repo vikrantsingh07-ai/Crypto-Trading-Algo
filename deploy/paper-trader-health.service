@@ -1,0 +1,5 @@
+[Unit]
+Description=Restart paper trader if its heartbeat is stale
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c '/opt/crypto-trading-algo/.venv/bin/python /opt/crypto-trading-algo/scripts/healthcheck.py --max-age 600 || systemctl restart paper-trader'

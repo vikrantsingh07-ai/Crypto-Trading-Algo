@@ -1,0 +1,6 @@
+numpy>=1.26
+pandas>=2.1
+# optional: only needed to download public market data from Binance
+requests>=2.31
+# dev
+pytest>=8

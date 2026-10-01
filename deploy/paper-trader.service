@@ -1,0 +1,20 @@
+# systemd unit for 24/7 PAPER trading on a VPS. No exchange keys are needed or accepted.
+#   sudo cp deploy/paper-trader.service /etc/systemd/system/ && sudo systemctl enable --now paper-trader
+[Unit]
+Description=Crypto paper trader (PAPER ONLY, virtual funds)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=trader
+WorkingDirectory=/opt/crypto-trading-algo
+ExecStart=/opt/crypto-trading-algo/.venv/bin/python scripts/run_paper.py --dashboard
+Restart=always
+RestartSec=10
+# Watchdog: a hung loop (no heartbeat) is restarted by the healthcheck timer below
+NoNewPrivileges=true
+ProtectSystem=full
+ReadWritePaths=/opt/crypto-trading-algo/runtime /opt/crypto-trading-algo/reports
+
+[Install]
+WantedBy=multi-user.target

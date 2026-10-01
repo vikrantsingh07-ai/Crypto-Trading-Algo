@@ -1,0 +1,72 @@
+# ---------------------------------------------------------------------------
+# PAPER TRADING / DEMO configuration.  Real-money trading is NOT supported.
+# ---------------------------------------------------------------------------
+mode = "paper"                 # the only accepted value; anything else aborts startup
+
+[account]
+initial_capital = 100000.0     # virtual starting balance
+currency = "INR"
+usdt_inr = 88.0                # fixed FX used to express USDT P&L in INR (config, not live)
+
+[market]
+symbols   = ["BTCUSDT", "ETHUSDT"]
+timeframe = "1h"
+htf       = "4h"               # higher timeframe used for optional confirmation
+warmup_bars = 300
+
+[costs]                        # deliberately conservative: every fill is a taker fill
+taker_fee_bps           = 10.0 # 0.10 % per side
+half_spread_bps         = 2.0
+slippage_bps            = 5.0
+stop_extra_slippage_bps = 5.0  # stop-market orders slip more
+funding_bps_per_8h      = 1.0  # longs pay / shorts receive (synthetic-short model)
+
+[risk]
+risk_per_trade_pct       = 0.5   # % of equity risked to the stop
+max_open_positions       = 2
+max_total_open_risk_pct  = 1.0
+max_leverage             = 1.0   # total notional / equity
+max_position_pct         = 60.0  # single position notional cap, % of equity
+max_daily_loss_pct       = 2.0   # no new entries until next UTC day
+max_drawdown_pct         = 10.0  # no new entries (and flatten) until reset
+flatten_on_drawdown_halt = true
+drawdown_reset_mode      = "cooldown"   # "cooldown" | "manual"
+drawdown_cooldown_bars   = 72           # bars halted before cooldown-reset (re-baselines peak)
+hard_stop_drawdown_pct   = 20.0         # kill-switch from the ALL-TIME peak; manual reset only
+max_consecutive_losses   = 3
+loss_cooldown_bars       = 24
+symbol_cooldown_bars     = 2            # bars before re-entering the same symbol
+max_trades_per_day       = 6            # anti-overtrading
+min_notional_inr         = 500.0
+
+[strategy]
+name = "regime_ensemble"
+use_htf_confirmation = false
+[strategy.params]                       # empty => strategy defaults
+
+[gates]                                 # robustness gates, declared before testing
+min_profit_factor        = 1.25
+min_trades               = 100
+min_wf_positive_windows  = 0.60
+max_drawdown_pct         = 15.0
+mc_dd95_limit_pct        = 25.0
+min_sharpe               = 0.8
+min_sensitivity_positive = 0.70
+min_assets_profitable    = 2
+cost_stress_multiplier   = 2.0
+holdout_fraction         = 0.30
+target_daily_pnl         = 2000.0
+
+[paper]
+db_path        = "runtime/paper.db"
+poll_seconds   = 30
+history_bars   = 1500
+validation_report = "reports/validation.json"
+health_file    = "runtime/health.json"
+max_data_age_bars = 3          # health degrades if last candle older than this many bars
+backoff_initial_s = 2.0
+backoff_max_s     = 300.0
+
+[dashboard]
+host = "127.0.0.1"   # use 0.0.0.0 inside Docker only behind a firewall/reverse proxy: the dashboard has no auth
+port = 8080

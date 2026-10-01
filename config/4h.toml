@@ -1,0 +1,4 @@
+# Overrides on top of default.toml: 4-hour candles (better signal-to-cost ratio than 1h).
+[market]
+timeframe = "4h"
+htf = "1d"

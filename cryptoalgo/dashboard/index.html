@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Paper Trading Dashboard</title>
+<style>
+:root{--bg:#f5f6f8;--card:#fff;--ink:#14171c;--mute:#6a7381;--line:#e2e5ea;--up:#0a7d2c;--down:#c62828;--accent:#2a6fdb;--warn:#b26a00}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0f1115;--card:#171a20;--ink:#e8eaee;--mute:#9099a6;--line:#2a2f38;--up:#3ecf6e;--down:#ff6b6b;--accent:#6aa3ff;--warn:#f0b04a}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif}
+.banner{position:sticky;top:0;z-index:5;background:#b00020;color:#fff;text-align:center;font-weight:800;letter-spacing:.06em;padding:8px 12px}
+.banner small{display:block;font-weight:500;letter-spacing:0;opacity:.9}
+main{max-width:1240px;margin:0 auto;padding:16px}
+.grid{display:grid;gap:12px}.kpis{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.two{grid-template-columns:repeat(auto-fit,minmax(380px,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow:hidden}
+.card h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute);margin:0 0 8px}
+.kpi .v{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}.kpi .s{color:var(--mute);font-size:12px}
+.up{color:var(--up)}.down{color:var(--down)}.warn{color:var(--warn)}
+.pill{display:inline-block;padding:2px 9px;border-radius:99px;font-weight:700;font-size:12px;border:1px solid currentColor}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}th,td{padding:4px 6px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}th{color:var(--mute);font-weight:600;font-size:12px}
+.scroll{overflow-x:auto;max-height:290px;overflow-y:auto}
+canvas{width:100%;height:240px;display:block}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.mute{color:var(--mute)}
+.log{font:12px/1.4 ui-monospace,Menlo,monospace}.log div{padding:2px 0;border-bottom:1px dashed var(--line)}
+</style>
+</head>
+<body>
+<div class="banner">PAPER TRADING / DEMO &mdash; VIRTUAL FUNDS ONLY &mdash; NO REAL ORDERS<small id="validation"></small></div>
+<main>
+  <div class="row" style="margin-bottom:12px">
+    <span id="botpill" class="pill">…</span><span id="riskpill" class="pill">…</span>
+    <span class="mute" id="meta"></span>
+  </div>
+  <div class="grid kpis" id="kpis"></div>
+  <div class="grid two" style="margin-top:12px">
+    <div class="card"><h2>Equity curve (virtual ₹)</h2><canvas id="eq"></canvas></div>
+    <div class="card"><h2>Daily P&amp;L (last 60 days)</h2><canvas id="daily"></canvas></div>
+  </div>
+  <div class="grid two" style="margin-top:12px">
+    <div class="card"><h2>Open positions</h2><div class="scroll"><table id="pos"></table></div></div>
+    <div class="card"><h2>Market regime &amp; risk status</h2><div id="regime"></div></div>
+  </div>
+  <div class="grid two" style="margin-top:12px">
+    <div class="card"><h2>Recent trades</h2><div class="scroll"><table id="trades"></table></div></div>
+    <div class="card"><h2>Monthly performance</h2><div class="scroll"><table id="monthly"></table></div></div>
+  </div>
+  <div class="grid two" style="margin-top:12px">
+    <div class="card"><h2>Error / status log</h2><div class="scroll log" id="errors"></div></div>
+    <div class="card"><h2>Risk events &amp; decisions</h2><div class="scroll log" id="events"></div></div>
+  </div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const inr=x=>(x<0?"-":"")+"₹"+Math.abs(x).toLocaleString("en-IN",{maximumFractionDigits:0});
+const cls=x=>x>0?"up":x<0?"down":"";
+const pct=x=>x==null?"–":x.toFixed(2)+"%";
+function kpi(l,v,s,c){return `<div class="card kpi"><h2>${l}</h2><div class="v ${c||""}">${v}</div><div class="s">${s||""}</div></div>`}
+function chart(cv,pts,opts){
+  const dpr=devicePixelRatio||1,w=cv.clientWidth,h=cv.clientHeight;cv.width=w*dpr;cv.height=h*dpr;
+  const g=cv.getContext("2d");g.scale(dpr,dpr);g.clearRect(0,0,w,h);
+  const css=getComputedStyle(document.documentElement);const mute=css.getPropertyValue("--mute"),line=css.getPropertyValue("--line"),acc=css.getPropertyValue("--accent"),up=css.getPropertyValue("--up"),dn=css.getPropertyValue("--down");
+  if(!pts.length){g.fillStyle=mute;g.fillText("no data yet",10,20);return}
+  const ys=pts.map(p=>p[1]);let lo=Math.min(...ys,opts.base??Infinity),hi=Math.max(...ys,opts.base??-Infinity);if(opts.bars){lo=Math.min(lo,0);hi=Math.max(hi,0)}
+  const pad=(hi-lo)*.08||1;lo-=pad;hi+=pad;const L=58,R=8,T=8,B=18;
+  const X=i=>L+i/(Math.max(pts.length-1,1))*(w-L-R),Y=v=>T+(hi-v)/(hi-lo)*(h-T-B);
+  g.strokeStyle=line;g.fillStyle=mute;g.font="11px system-ui";g.lineWidth=1;
+  for(let k=0;k<=4;k++){const v=lo+(hi-lo)*k/4,y=Y(v);g.beginPath();g.moveTo(L,y);g.lineTo(w-R,y);g.stroke();g.fillText(Math.round(v).toLocaleString("en-IN"),2,y+4)}
+  if(opts.base!=null){g.setLineDash([4,3]);g.beginPath();g.moveTo(L,Y(opts.base));g.lineTo(w-R,Y(opts.base));g.stroke();g.setLineDash([])}
+  if(opts.bars){const bw=Math.max(1,(w-L-R)/pts.length*.7);pts.forEach((p,i)=>{g.fillStyle=p[1]>=0?up:dn;g.fillRect(X(i)-bw/2,Math.min(Y(0),Y(p[1])),bw,Math.abs(Y(p[1])-Y(0)))})}
+  else{g.strokeStyle=acc;g.lineWidth=1.8;g.beginPath();pts.forEach((p,i)=>i?g.lineTo(X(i),Y(p[1])):g.moveTo(X(i),Y(p[1])));g.stroke()}
+  g.fillStyle=mute;g.fillText(pts[0][0],L,h-4);const last=String(pts[pts.length-1][0]);g.fillText(last,w-R-g.measureText(last).width,h-4);
+}
+function tbl(el,head,rows){$(el).innerHTML="<tr>"+head.map(h=>`<th>${h}</th>`).join("")+"</tr>"+(rows.length?rows.join(""):`<tr><td colspan="${head.length}" class="mute">none</td></tr>`)}
+function pillcls(s){return s==="RUNNING"||s==="OK"?"up":(s==="DEGRADED"||s==="STOPPED"||String(s).includes("COOLDOWN"))?"warn":"down"}
+async function refresh(){
+  let s;try{s=await (await fetch("/api/state")).json()}catch(e){$("botpill").textContent="DASHBOARD CANNOT REACH DB";$("botpill").className="pill down";return}
+  if(s.error){$("botpill").textContent="ERROR: "+s.error;$("botpill").className="pill down";return}
+  const b=s.bot||{},r=s.risk||{},m=s.metrics||{};
+  $("validation").textContent=(s.validation&&s.validation.label)||"";
+  $("botpill").textContent="BOT: "+(b.status||"NO DATA");$("botpill").className="pill "+pillcls(b.status);
+  $("riskpill").textContent="RISK: "+(r.status||"–");$("riskpill").className="pill "+pillcls(r.status);
+  $("meta").textContent=`${(s.strategy||{}).name||""} · ${((s.strategy||{}).symbols||[]).join(", ")} · ${(s.strategy||{}).timeframe||""} · last bar ${b.last_bar||"–"} · uptime ${Math.round((b.uptime_s||0)/60)} min`;
+  $("kpis").innerHTML=[
+    kpi("Virtual balance (cash)",inr(s.balance),"starting "+inr(s.initial_capital)),
+    kpi("Current equity",inr(s.equity),"unrealised "+inr(s.unrealized),cls(s.equity-s.initial_capital)),
+    kpi("Today's P&L",inr(s.today_pnl),"UTC day",cls(s.today_pnl)),
+    kpi("Total P&L",inr(s.total_pnl),pct(s.total_pnl/s.initial_capital*100),cls(s.total_pnl)),
+    kpi("Win rate",m.win_rate_pct==null?"–":m.win_rate_pct.toFixed(1)+"%",`${m.trades||0} trades`),
+    kpi("Profit factor",m.profit_factor==null?"–":m.profit_factor.toFixed(2),"R:R "+(m.risk_reward==null?"–":m.risk_reward.toFixed(2))),
+    kpi("Drawdown (now / max)",pct(s.current_drawdown_pct),"max "+pct(m.max_drawdown_pct),s.current_drawdown_pct>5?"warn":""),
+    kpi("Avg daily P&L",inr(m.daily_avg_pnl||0),"target ₹2,000 (hypothesis only)"),
+    kpi("Sharpe / Sortino",`${(m.sharpe||0).toFixed(2)} / ${(m.sortino||0).toFixed(2)}`,"daily, annualised"),
+    kpi("Fees paid",inr(m.total_fees||0),"simulated")].join("");
+  chart($("eq"),s.equity_curve.map(p=>[new Date(p[0]).toISOString().slice(5,10),p[1]]),{base:s.initial_capital});
+  chart($("daily"),s.daily_pnl.map(d=>[d.day.slice(5),d.pnl]),{bars:true});
+  tbl("pos",["Symbol","Side","Qty","Entry","Mark","Stop","Unreal. ₹"],s.positions.map(p=>`<tr><td>${p.symbol}</td><td>${p.side}</td><td>${p.qty.toFixed(5)}</td><td>${p.entry_price.toFixed(2)}</td><td>${p.mark.toFixed(2)}</td><td>${p.stop.toFixed(2)}</td><td class="${cls(p.unrealized_inr)}">${inr(p.unrealized_inr)}</td></tr>`));
+  tbl("trades",["Closed","Symbol","Side","Entry","Exit","Net ₹","R","Reason"],s.recent_trades.map(t=>`<tr><td>${t.exit_time.slice(5,16)}</td><td>${t.symbol}</td><td>${t.side}</td><td>${t.entry_price.toFixed(2)}</td><td>${t.exit_price.toFixed(2)}</td><td class="${cls(t.net_pnl)}">${inr(t.net_pnl)}</td><td>${t.r_multiple.toFixed(2)}</td><td>${t.exit_reason}</td></tr>`));
+  tbl("monthly",["Month","P&L","Return"],s.monthly.map(x=>`<tr><td>${x.month}</td><td class="${cls(x.pnl)}">${inr(x.pnl)}</td><td class="${cls(x.return_pct)}">${pct(x.return_pct)}</td></tr>`));
+  $("regime").innerHTML=Object.entries(s.regimes||{}).map(([k,v])=>`<div><b>${k}</b>: ${v}</div>`).join("")+
+    `<hr style="border:0;border-top:1px solid var(--line)"><div>Risk status: <b class="${pillcls(r.status)}">${r.status||"–"}</b></div>
+     <div class="mute">equity peak ${inr(r.true_peak||0)} · loss streak ${r.loss_streak||0} · trades today ${r.trades_today||0}</div>
+     <div class="mute">daily-loss halt: ${r.daily_halted?"YES":"no"} · drawdown halt: ${r.dd_halted?"YES":"no"} · hard stop: ${r.hard_halted?"YES":"no"}</div>`;
+  $("errors").innerHTML=(s.errors.length?s.errors.map(e=>`<div><span class="mute">${String(e.time).slice(0,19)}</span> [${e.component}] ${e.message}</div>`):["<div class='mute'>no errors recorded</div>"]).join("")+
+     (b.last_error?`<div class="warn">last: ${b.last_error}</div>`:"");
+  $("events").innerHTML=s.risk_events.map(e=>`<div><span class="mute">${String(e.time).slice(0,16)}</span> <b class="warn">${e.kind}</b></div>`).join("")+
+     s.decisions.map(e=>`<div><span class="mute">${String(e.time).slice(0,16)}</span> ${e.symbol} ${e.action} <span class="mute">${e.reason||""}</span></div>`).join("")||"<div class='mute'>none</div>";
+}
+refresh();setInterval(refresh,5000);addEventListener("resize",refresh);
+</script>
+</body>
+</html>
